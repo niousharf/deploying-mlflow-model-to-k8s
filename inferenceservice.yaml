@@ -1,0 +1,17 @@
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "mlflow-dummy"
+  namespace: "mlflow-kserve-test"
+spec:
+  predictor:
+    containers:
+      - name: "mlflow-dummy"
+        image: "niousharf/mlflow-dummy:latest"
+        imagePullPolicy: "IfNotPresent"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        env:
+          - name: PROTOCOL
+            value: "v2"

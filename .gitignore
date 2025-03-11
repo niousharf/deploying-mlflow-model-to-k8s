@@ -1,0 +1,27 @@
+# Ignore virtual environments
+.venv/
+venv/
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore Poetry lock file
+poetry.lock
+
+# Ignore env
+.env
+
+# Ignore mlruns
+mlruns/
+
+# Ignore folders created by mlserver
+.envs/
+.metrics/
+
+# Ignore mlflow model folder
+mlflow_model/*
+# Explicitly keep the folder itself
+!/mlflow_model/
+
+# Ignore DS_Store files
+.DS_Store
