@@ -6,7 +6,7 @@ For official MLflow deployment documentation, refer to the [MLflow Docs](https:/
 MLflow offers a Flask-based inference server for easy model deployment, which can be containerized and deployed to Kubernetes. However, this approach is not ideal for production due to Flask's limitations in scalability and performance. To address these issues, MLflow integrates with [MLServer](https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=https://mlserver.readthedocs.io/en/latest/getting-started/index.html&ved=2ahUKEwjbxYqzl4OMAxUJHzQIHW-lBHoQFnoECBkQAQ&usg=AOvVaw0LYOLhvBnH3NfdwTh6DTvz), a more robust inference engine designed for large-scale deployments. MLServer enables seamless, one-step deployment to Kubernetes-based frameworks like [KServe](https://kserve.github.io/website/latest/).
 
 ## Environment Setup
-Follow the instructions in this [Poetry setup guide](https://github.com/niousharf/chatbot-proj/tree/master) to set up your environment.
+Follow the instructions in my other [GitHub repo README](https://github.com/niousharf/chatbot-proj/tree/master) to set up your environment.
 
 ## Setup Kubernetes Cluster
 ### Local Machine Emulation
