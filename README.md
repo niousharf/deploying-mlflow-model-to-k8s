@@ -1,16 +1,20 @@
-# Guide to Deploying an MLflow Model to a Kubernetes cluster using KServe
+# Guide to Deploying an MLflow Model to a Kubernetes Cluster Using KServe
 
 For official MLflow deployment documentation, refer to the [MLflow Docs](https://mlflow.org/docs/latest/deployment/deploy-model-locally/).
 
 ## Why KServe?
 MLflow offers a Flask-based inference server for easy model deployment, which can be containerized and deployed to Kubernetes. However, this approach is not ideal for production due to Flask's limitations in scalability and performance. To address these issues, MLflow integrates with [MLServer](https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=https://mlserver.readthedocs.io/en/latest/getting-started/index.html&ved=2ahUKEwjbxYqzl4OMAxUJHzQIHW-lBHoQFnoECBkQAQ&usg=AOvVaw0LYOLhvBnH3NfdwTh6DTvz), a more robust inference engine designed for large-scale deployments. MLServer enables seamless, one-step deployment to Kubernetes-based frameworks like [KServe](https://kserve.github.io/website/latest/).
 
-## Environment Setup
-Follow the instructions in my other [GitHub repo README](https://github.com/niousharf/chatbot-proj/tree/master) to set up your environment.
+## Setup Poetry
+Follow the instructions in my other [GitHub repo README](https://github.com/niousharf/chatbot-proj/tree/master) to set up Poetry.
 
-## Setup Kubernetes Cluster
-### Local Machine Emulation
-1. Follow [KServe QuickStart](https://kserve.github.io/website/latest/get_started/) to set up [Kind](https://kind.sigs.k8s.io/docs/user/quick-start) for local Kubernetes cluster emulation and install KServe on it. Make sure to check for the latest version of KServe documentation.
+## Setup a Kubernetes Cluster
+### Kubernetes Cluster
+If you already have access to a Kubernetes cluster, you can install KServe to your cluster by following the official [installation instructions](https://github.com/kserve/kserve#hammer_and_wrench-installation).
+### Local Kubernetes Cluster Emulation
+1. Follow the [KServe QuickStart](https://kserve.github.io/website/latest/get_started/) to set up [Kind](https://kind.sigs.k8s.io/docs/user/quick-start) (Kubernetes in Docker) for local Kubernetes cluster emulation and install KServe on it. Make sure to check for the latest version of KServe documentation.
+
+Now that you have a Kubernetes cluster running as a deployment target, let's move on to creating the MLflow Model to deploy.
 
 ## Using Managed MLflow on Databricks
 By default, MLflow uses the local filesystem as the tracking URI. If using Databricks, set the following environment variables:
@@ -22,7 +26,7 @@ export DATABRICKS_TOKEN="<your-access-token>"
 ```
 
 ## Train Model
-The focus of this project is deployment. Use any ML framework and ensure your script is in the `src` folder. The model should be logged correctly. This project uses a dummy linear regression model.
+The focus of this project is deployment. Use any ML framework and ensure your script is in the `src` folder. The model should be logged correctly by mlflow. This project uses a dummy linear regression model.
 
 ## Packaging the Model
 If you use `mlflow.autolog`, it logs the model binary and dependencies automatically. The file structure should look like this:
@@ -37,7 +41,7 @@ model/
 ```
 
 ## Test Model Serving Locally
-Before deployment, test the model locally. MLflow uses **Flask** for serving models by default, but we will use `mlserver` for compatibility with KServe. Ensure `virtualenv`, `mlserver`, and `mlserver-mlflow` are installed.
+Before deployment, test the model serving locally. MLflow uses **Flask** for serving models by default, but we will use `mlserver` for compatibility with KServe. Ensure `virtualenv`, `mlserver`, and `mlserver-mlflow` are installed.
 
 ```bash
 mlflow models serve -m runs:/<run_id_for_your_best_run>/model -p 1234 --enable-mlserver
@@ -77,9 +81,11 @@ kubectl create namespace mlflow-kserve-test
 ```
 
 ### Build a Docker Image
-Instead of `mlflow models build-docker`, which is unreliable, we use a custom `Dockerfile`.
+According to my experience, `mlflow models build-docker` is unreliable because it creates incomplete Docker images and doesn’t expose ports correctly. Therefore, we use a custom `DockerFile` instead.
 
-#### Dockerfile Explanation:
+**Note**: make sure you moved the best run's model artifacts to the `mlflow_model` directory.
+
+#### DockerFile Explanation:
 - Installs `mlserver` and `mlserver-mlflow`.
 - Copies the MLflow model from `mlflow_model/` to `/opt/ml/model`.
 - Installs Python dependencies from `requirements.txt`.
@@ -92,14 +98,15 @@ docker build -t mlflow-dummy .
 ```
 
 ### Tag and Push Docker Image
+The Docker image must be stored in a registry, either public or private by granting the right priviledges to be accessible by KServe. The image should be tagged properly using the `registry_name` before getting pushed to the registry. 
 ```bash
-docker tag mlflow-dummy <repository>/mlflow-dummy:latest
+docker tag mlflow-dummy <registry_name>/mlflow-dummy:latest
 
-docker push <repository>/mlflow-dummy:latest
+docker push <registry_name>/mlflow-dummy:latest
 ```
 
 ## Deploy Inference Service
-Apply the inference service YAML configuration:
+Apply the inference service YAML configuration. The `kubectl apply -f InferenceService` command creates or updates the KServe InferenceService resource in your Kubernetes cluster, deploying the model as a scalable service.
 ```bash
 kubectl apply -f inferenceservice.yaml
 ```
@@ -119,16 +126,30 @@ mlflow-dummy   http://mlflow-dummy.mlflow-kserve-test.example.com   True        
 ```
 
 ## Testing the Deployment
-### Expose the Inference Service Locally
+### Kubernetes Cluster
+Assuming your cluster is exposed via LoadBalancer, follow these instructions to find the Ingress IP and port. Then send a test request using curl command:
+```bash
+SERVICE_HOSTNAME=$(kubectl get inferenceservice mlflow-dummy -n mlflow-kserve-test -o jsonpath='{.status.url}' | cut -d "/" -f 3)
+$ curl -v \
+  -H "Host: ${SERVICE_HOSTNAME}" \
+  -H "Content-Type: application/json" \
+  -d @./test-input.json \
+  http://${INGRESS_HOST}:${INGRESS_PORT}/v2/models/mlflow-dummy/infer
+```
+### Local Cluster
 Use port forwarding to access the service locally:
 ```bash
 INGRESS_GATEWAY_SERVICE=$(kubectl get svc -n istio-system --selector="app=istio-ingressgateway" -o jsonpath='{.items[0].metadata.name}')
 kubectl port-forward -n istio-system svc/${INGRESS_GATEWAY_SERVICE} 8080:80
 ```
 
-Then, in another terminal:
+Then, in another terminal, navigate to the project root directory and run the command below.
 ```bash
-kubectl port-forward -n istio-system svc/${INGRESS_GATEWAY_SERVICE} 8080:80
+SERVICE_HOSTNAME=$(kubectl get inferenceservice mlflow-dummy -n mlflow-kserve-test -o jsonpath='{.status.url}' | cut -d "/" -f 3)
+curl -v  \
+-H "Host: ${SERVICE_HOSTNAME}" \
+-H "Content-Type: application/json" http://127.0.0.1:8080/v2/models/mlflow-dummy/infer \
+-d @test-input.json 
 ```
 
 ### Expected Output Format
